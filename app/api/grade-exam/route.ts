@@ -27,9 +27,13 @@ export async function POST(req: Request) {
     const examSetId = String(body?.examSetId || '').trim();
     const answers = body?.answers;
     const theoryAnswer = typeof body?.theoryAnswer === 'string' ? body.theoryAnswer : '';
+    const studentName = typeof body?.studentName === 'string' ? body.studentName.trim() : '';
 
     if (!examSetId) {
       return NextResponse.json({ error: 'examSetId is required.' }, { status: 400 });
+    }
+    if (!studentName) {
+      return NextResponse.json({ error: 'Your name is required.' }, { status: 400 });
     }
     if (!answers || typeof answers !== 'object' || Array.isArray(answers)) {
       return NextResponse.json({ error: 'Submitted OBJ answers are missing or invalid.' }, { status: 400 });
@@ -130,7 +134,30 @@ Grade the student's answer against the model answer and rubric. Return ONLY vali
     const totalScore = objScore + theoryResult.score;
     const totalMax = objQuestions.length + theoryMax;
 
+    const { data: savedResult, error: saveError } = await supabase
+      .from('exam_results')
+      .insert({
+        exam_set_id: examSet.id,
+        student_name: studentName,
+        subject: examSet.subject,
+        theory_question: { question: theory.question ?? '', max_marks: theoryMax },
+        theory_answer: theoryAnswer,
+        obj_results: objResults,
+        obj_score: objScore,
+        obj_max: objQuestions.length,
+        theory_result: theoryResult,
+        total_score: totalScore,
+        total_max: totalMax,
+      })
+      .select('id')
+      .single();
+
+    if (saveError) {
+      console.error('Failed to save result:', saveError);
+    }
+
     return NextResponse.json({
+      resultId: savedResult?.id ?? null,
       obj_results: objResults,
       obj_score: objScore,
       obj_max: objQuestions.length,
