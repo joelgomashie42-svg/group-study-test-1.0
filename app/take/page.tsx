@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { GraduationCap, FileText, ArrowLeft, Loader2, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { GraduationCap, FileText, ArrowLeft, Loader2, Send, AlertCircle, CheckCircle2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Progress } from '@/components/ui/progress';
@@ -38,9 +39,11 @@ const SUBJECTS: Subject[] = [
 ];
 
 const LETTERS = ['A', 'B', 'C', 'D'] as const;
+const NAME_STORAGE_KEY = 'examgen_student_name';
 
 export default function TakeTestPage() {
   const router = useRouter();
+  const [studentName, setStudentName] = useState('');
   const [subject, setSubject] = useState<Subject | ''>('');
   const [examSets, setExamSets] = useState<{ id: string; created_at: string }[]>([]);
   const [selectedSetId, setSelectedSetId] = useState('');
@@ -52,7 +55,16 @@ export default function TakeTestPage() {
   const [theoryAnswer, setTheoryAnswer] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Fetch available exam sets for the selected subject
+  useEffect(() => {
+    const saved = localStorage.getItem(NAME_STORAGE_KEY);
+    if (saved) setStudentName(saved);
+  }, []);
+
+  const handleNameChange = (value: string) => {
+    setStudentName(value);
+    localStorage.setItem(NAME_STORAGE_KEY, value);
+  };
+
   useEffect(() => {
     if (!subject) {
       setExamSets([]);
@@ -79,8 +91,11 @@ export default function TakeTestPage() {
       });
   }, [subject]);
 
-  // Fetch the selected exam set — only questions and options, NO answers
   const loadExam = async (setId: string) => {
+    if (!studentName.trim()) {
+      toast.error('Please enter your name first.');
+      return;
+    }
     setLoadingExam(true);
     setError('');
     setExam(null);
@@ -107,6 +122,10 @@ export default function TakeTestPage() {
 
   const handleSubmit = async () => {
     if (!exam) return;
+    if (!studentName.trim()) {
+      toast.error('Please enter your name before submitting.');
+      return;
+    }
     if (answeredCount < totalObj) {
       toast.error(`You've answered ${answeredCount} of ${totalObj} OBJ questions. Please answer all before submitting.`);
       return;
@@ -127,6 +146,7 @@ export default function TakeTestPage() {
           examSetId: exam.id,
           answers,
           theoryAnswer,
+          studentName: studentName.trim(),
         }),
       });
 
@@ -138,17 +158,11 @@ export default function TakeTestPage() {
       const result = await res.json();
       if (result.error) throw new Error(result.error);
 
-      // Store results in sessionStorage for the results page
-      sessionStorage.setItem('examResult', JSON.stringify({
-        result,
-        exam: {
-          subject: exam.subject,
-          obj_questions: exam.obj_questions,
-          theory_question: exam.theory_question,
-          theoryAnswer,
-        },
-      }));
-      router.push('/results');
+      if (result.resultId) {
+        router.push(`/results?id=${result.resultId}`);
+      } else {
+        toast.error('Graded, but the result could not be saved. Please try again.');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Failed to submit exam. Please try again.');
     } finally {
@@ -185,13 +199,25 @@ export default function TakeTestPage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Take a Test</h1>
-            <p className="text-muted-foreground">Select a subject and exam set to begin</p>
+            <p className="text-muted-foreground">Enter your name, then select a subject and exam set</p>
           </div>
         </div>
 
-        {/* Selection */}
         {!exam && (
           <Card className="mt-8 p-8 space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="studentName" className="text-sm font-semibold flex items-center gap-1.5">
+                <User className="w-4 h-4" /> Your Name
+              </Label>
+              <Input
+                id="studentName"
+                value={studentName}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="e.g. Gomashie Joel"
+                className="max-w-sm"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Subject</Label>
               <Select value={subject} onValueChange={(v) => setSubject(v as Subject)}>
@@ -248,19 +274,16 @@ export default function TakeTestPage() {
           </Card>
         )}
 
-        {/* Exam */}
         {exam && (
           <div className="mt-8 space-y-6 animate-fade-in">
-            {/* Progress bar */}
             <Card className="p-5 sticky top-20 z-40">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-foreground">{exam.subject}</span>
+                <span className="text-sm font-semibold text-foreground">{exam.subject} — {studentName}</span>
                 <span className="text-sm text-muted-foreground">{answeredCount} / {totalObj} answered</span>
               </div>
               <Progress value={progress} className="h-2" />
             </Card>
 
-            {/* OBJ Questions */}
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-foreground pt-2">Multiple Choice Questions</h2>
               {exam.obj_questions.map((q, idx) => (
@@ -290,7 +313,6 @@ export default function TakeTestPage() {
               ))}
             </div>
 
-            {/* Theory Question */}
             <div className="space-y-4 pt-4">
               <h2 className="text-lg font-semibold text-foreground">Theory Question</h2>
               <Card className="p-6">
@@ -310,7 +332,6 @@ export default function TakeTestPage() {
               </Card>
             </div>
 
-            {/* Submit */}
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button size="lg" className="w-full text-base font-semibold h-12" disabled={submitting}>
