@@ -1,7 +1,0 @@
-project_id = "bzynhjuaqpsvqozsryep"
-
-[functions.generate-exam]
-verify_jwt = false
-
-[functions.grade-exam]
-verify_jwt = false
